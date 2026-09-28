@@ -66,8 +66,7 @@ jobs:
 
     - name: Prepare notification
       run: |
-        # Dependencias obsoletas: una por linea, separadas por ";" para poder
-        # pasarlas en una sola variable de entorno.
+        # Dependencias obsoletas: una por linea, separadas por ";"
         if [ -f outdated_dependencies.txt ]; then
             outdated=$(awk 'NR>2 {print $1, $2, $3}' outdated_dependencies.txt | tr '\n' ';')
         else
@@ -75,26 +74,12 @@ jobs:
         fi
         echo "outdated_dependencies=$outdated" >> $GITHUB_ENV
 
-        # El informe de pip-audit es JSON multilinea. La forma "clave=valor" de
-        # GITHUB_ENV solo admite una linea, asi que hay que usar el delimitador;
-        # sin el, el paso siguiente recibe el JSON truncado y JSON.parse falla.
-        # Si no hay informe se escribe un JSON vacio, no un texto: el consumidor
-        # siempre parsea.
-        {
-          echo "vulnerabilities<<PIP_AUDIT_EOF"
-          if [ -f audit_report.json ]; then
-              cat audit_report.json
-          else
-              echo '{"dependencies": []}'
-          fi
-          echo "PIP_AUDIT_EOF"
-        } >> $GITHUB_ENV
-
     - name: Create GitHub issue for outdated dependencies and vulnerabilities
       uses: actions/github-script@v7
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
+          const fs = require('fs');
           const title = "Notificación de dependencias";
 
           // Dependencias obsoletas, en tabla.
@@ -110,8 +95,12 @@ jobs:
             outdatedDeps || '| No se encontraron dependencias obsoletas | | |',
           ].join('\n');
 
-          // Vulnerabilidades, en tabla.
-          const vulnerabilitiesData = JSON.parse(process.env.vulnerabilities);
+          // CORRECCIÓN: Leer el JSON gigante directamente del archivo en lugar de la variable
+          let vulnerabilitiesData = { dependencies: [] };
+          if (fs.existsSync('audit_report.json')) {
+              vulnerabilitiesData = JSON.parse(fs.readFileSync('audit_report.json', 'utf8'));
+          }
+
           const vulnerableDeps = (vulnerabilitiesData.dependencies || [])
             .filter(dep => (dep.vulns || []).length > 0);
 
@@ -129,8 +118,6 @@ jobs:
             vulnerabilityRows,
           ].join('\n');
 
-          // Sin indentacion: cuatro espacios al principio de linea convierten
-          // la tabla en un bloque de codigo y el issue sale ilegible.
           const body = [
             '### Dependencias obsoletas',
             '',
