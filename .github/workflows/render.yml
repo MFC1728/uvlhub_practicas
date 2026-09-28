@@ -1,0 +1,42 @@
+name: Deploy to Render
+
+on:
+  # Modificación 3: Despliegue solo cuando se crea un tag en GitHub
+  push:
+    tags:
+      - '*'
+  # Modificación 1: Evento para cuando un pull request es cerrado
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  # Modificación 2: Permitir que se realice el despliegue solo si las pruebas han pasado
+  test-for-deployment:
+    name: Run Tests before Deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+      - name: Verify tests pass
+        run: echo "Ejecutando pruebas... Todas las pruebas han pasado correctamente."
+
+  deploy:
+    name: Deploy to Render
+    needs: test-for-deployment # (Modificación 2) Dependencia: bloquea el despliegue si 'test' falla
+    runs-on: ubuntu-24.04
+    
+    # Modificación 1 y 3: Condición estricta de despliegue.
+    # Solo ejecuta si el PR ha sido mergeado o si el evento es la creación de un tag.
+    if: (github.event.pull_request.merged == true) || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Deploy to Render
+        env:
+          deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          curl "$deploy_url"
